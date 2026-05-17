@@ -2,7 +2,7 @@ import { getFollowUps, getApplications } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Metadata } from "next"
-import { TrackButton, AddFollowUpForm } from "./followup-client"
+import { TrackButton, AddFollowUpForm, DeleteFollowUpButton } from "./followup-client"
 
 export const metadata: Metadata = { title: "Follow-ups — career-ops" }
 
@@ -19,7 +19,15 @@ function urgencyLabel(dueDate: string): { label: string; cls: string } {
   return { label: `${Math.floor(diff)}d left`, cls: "bg-green-100 text-green-800" }
 }
 
-export default async function FollowUpsPage() {
+type SortKey = "days" | "date" | "company"
+
+export default async function FollowUpsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ sort?: string }>
+}) {
+  const { sort } = await searchParams
+  const sortKey: SortKey = (sort === "days" || sort === "date" || sort === "company") ? sort : "days"
   const [followUps, apps] = await Promise.all([getFollowUps(), getApplications()])
 
   const trackedCompanies = new Set(followUps.map(f => f.company.toLowerCase()))
@@ -29,6 +37,26 @@ export default async function FollowUpsPage() {
 
   const overdue = followUps.filter(f => f.dueDate && (new Date(f.dueDate).getTime() - Date.now()) / 86400000 < 0)
   const dueSoon = followUps.filter(f => f.dueDate && (new Date(f.dueDate).getTime() - Date.now()) / 86400000 >= 0 && (new Date(f.dueDate).getTime() - Date.now()) / 86400000 <= 2)
+
+  const sorted = [...followUps].sort((a, b) => {
+    if (sortKey === "company") return a.company.localeCompare(b.company)
+    if (sortKey === "date") return (a.appliedDate || "").localeCompare(b.appliedDate || "")
+    // days: descending (most days without contact first)
+    return daysSince(b.lastContact || b.appliedDate) - daysSince(a.lastContact || a.appliedDate)
+  })
+
+  function sortHref(key: SortKey) {
+    return key === "days" ? "/dashboard/followups" : `/dashboard/followups?sort=${key}`
+  }
+
+  function sortHeader(label: string, key: SortKey) {
+    const active = sortKey === key
+    return (
+      <a href={sortHref(key)} className={`hover:text-foreground ${active ? "text-foreground underline underline-offset-2" : ""}`}>
+        {label}{active ? " ↓" : ""}
+      </a>
+    )
+  }
 
   return (
     <>
@@ -77,13 +105,18 @@ export default async function FollowUpsPage() {
               <table className="w-full text-sm min-w-[700px]">
                 <thead>
                   <tr className="border-b bg-muted/50">
-                    {["Company","Role","Applied","Days Since","Next Action","Due","Notes"].map(h => (
-                      <th key={h} className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">{h}</th>
-                    ))}
+                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">{sortHeader("Company", "company")}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">Role</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">{sortHeader("Applied", "date")}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">{sortHeader("Days Since", "days")}</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">Next Action</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">Due</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap">Notes</th>
+                    <th className="px-4 py-2.5 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground whitespace-nowrap w-8"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {followUps.map(f => {
+                  {sorted.map(f => {
                     const urg = urgencyLabel(f.dueDate)
                     const isOverdue = urg.cls.includes("red")
                     return (
@@ -101,6 +134,7 @@ export default async function FollowUpsPage() {
                           {urg.label && <Badge className={urg.cls} variant="secondary">{urg.label}</Badge>}
                         </td>
                         <td className="px-4 py-3 text-muted-foreground max-w-40 truncate text-xs">{f.notes}</td>
+                        <td className="px-4 py-3"><DeleteFollowUpButton num={f.number} /></td>
                       </tr>
                     )
                   })}

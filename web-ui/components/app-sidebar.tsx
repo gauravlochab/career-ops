@@ -4,11 +4,16 @@ import * as React from "react"
 import {
   IconBriefcase,
   IconChartBar,
+  IconChartPie,
   IconClipboardList,
   IconDashboard,
+  IconFileTypePdf,
+  IconGitCompare,
   IconMailForward,
   IconPlayerPlay,
   IconSchool,
+  IconSearch,
+  IconStack2,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -37,6 +42,11 @@ const data = {
     { title: "Follow-ups",     url: "/dashboard/followups",  icon: IconMailForward },
     { title: "Interview Prep", url: "/dashboard/interview",  icon: IconSchool },
     { title: "Analytics",      url: "/dashboard/analytics",  icon: IconChartBar },
+    { title: "Scan for Jobs",  url: "/dashboard/scanner",    icon: IconSearch },
+    { title: "Batch Evaluate", url: "/dashboard/batch",      icon: IconStack2 },
+    { title: "Insights",       url: "/dashboard/insights",   icon: IconChartPie },
+    { title: "Generate PDFs",  url: "/dashboard/pdf",        icon: IconFileTypePdf },
+    { title: "Compare Offers", url: "/dashboard/compare",    icon: IconGitCompare },
   ],
 }
 

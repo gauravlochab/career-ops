@@ -297,4 +297,177 @@ app.get('/api/evaluate/:jobId/stream', (req, res) => {
   req.on('close', () => job.clients.delete(res))
 })
 
+// --- New routes ---
+
+// POST /api/pipeline — add a new URL to pipeline.md
+app.post('/api/pipeline', (req, res) => {
+  const { url, company = '', role = '' } = req.body
+  if (!url || !url.startsWith('http')) return res.status(400).json({ error: 'Invalid URL' })
+  const pipelineFile = path.join(ROOT, 'data', 'pipeline.md')
+  let content = ''
+  try { content = fs.readFileSync(pipelineFile, 'utf8') } catch { content = '# Pipeline\n\n## Pending\n\n' }
+  const parts = [url, company, role].filter(Boolean)
+  const line = `- [ ] ${parts.join(' | ')}\n`
+  const sectionIdx = content.indexOf('\n## ')
+  if (sectionIdx !== -1) {
+    const afterHeader = content.indexOf('\n', sectionIdx + 1) + 1
+    content = content.slice(0, afterHeader) + line + content.slice(afterHeader)
+  } else {
+    content += line
+  }
+  fs.writeFileSync(pipelineFile, content)
+  res.json({ ok: true })
+})
+
+// DELETE /api/followups/:num — remove a follow-up row
+app.delete('/api/followups/:num', (req, res) => {
+  const num = parseInt(req.params.num, 10)
+  const followupsFile = path.join(ROOT, 'data', 'follow-ups.md')
+  if (!fs.existsSync(followupsFile)) return res.json({ ok: true })
+  const lines = fs.readFileSync(followupsFile, 'utf8').split('\n')
+  const filtered = lines.filter(line => {
+    const cols = line.split('|').map(c => c.trim())
+    if (cols.length < 3) return true
+    return parseInt(cols[1], 10) !== num
+  })
+  fs.writeFileSync(followupsFile, filtered.join('\n'))
+  res.json({ ok: true })
+})
+
+// POST /api/scan — trigger scan.mjs
+const scanJobs = new Map()
+app.post('/api/scan', (req, res) => {
+  const { company } = req.body || {}
+  const jobId = randomUUID()
+  const args = ['scan.mjs', ...(company ? ['--company', company] : [])]
+  const child = spawn('node', args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+  const job = { lines: [], done: false, error: null, clients: new Set() }
+  scanJobs.set(jobId, job)
+  function pushScanLine(line) {
+    job.lines.push(line)
+    const msg = `data: ${JSON.stringify({ line })}\n\n`
+    for (const client of job.clients) client.write(msg)
+  }
+  child.stdout.on('data', d => String(d).split('\n').filter(Boolean).forEach(pushScanLine))
+  child.stderr.on('data', d => String(d).split('\n').filter(Boolean).forEach(l => pushScanLine(`⚠ ${l}`)))
+  child.on('close', code => {
+    job.done = true
+    job.error = code !== 0 ? `Exited with code ${code}` : null
+    const msg = `data: ${JSON.stringify({ done: true, error: job.error })}\n\n`
+    for (const client of job.clients) { client.write(msg); client.end() }
+    job.clients.clear()
+    setTimeout(() => scanJobs.delete(jobId), 10 * 60 * 1000)
+  })
+  res.json({ jobId })
+})
+
+app.get('/api/scan/:jobId/stream', (req, res) => {
+  const job = scanJobs.get(req.params.jobId)
+  if (!job) return res.status(404).json({ error: 'Job not found' })
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+  for (const line of job.lines) res.write(`data: ${JSON.stringify({ line })}\n\n`)
+  if (job.done) {
+    res.write(`data: ${JSON.stringify({ done: true, error: job.error })}\n\n`)
+    return res.end()
+  }
+  job.clients.add(res)
+  req.on('close', () => job.clients.delete(res))
+})
+
+// GET /api/patterns — run analyze-patterns.mjs and return JSON
+app.get('/api/patterns', (req, res) => {
+  const child = spawn('node', ['analyze-patterns.mjs'], { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] })
+  let out = ''
+  let err = ''
+  child.stdout.on('data', d => out += d)
+  child.stderr.on('data', d => err += d)
+  child.on('close', code => {
+    if (code !== 0) return res.status(500).json({ error: err || `Exited ${code}` })
+    try { res.json(JSON.parse(out)) }
+    catch { res.status(500).json({ error: 'JSON parse failed', raw: out.slice(0, 500) }) }
+  })
+})
+
+// POST /api/batch — spawn N parallel evaluate jobs
+app.post('/api/batch', (req, res) => {
+  const { urls } = req.body
+  if (!Array.isArray(urls) || urls.length === 0) return res.status(400).json({ error: 'urls required' })
+  const jobIds = urls.map(url => {
+    const jobId = randomUUID()
+    const prompt = `Evaluate this job posting: ${url}\n\nFollow the full auto-pipeline: fetch the JD, run all evaluation blocks (A-G), save the report, generate the PDF if score >= 3.0, and update the tracker.`
+    const args = ['-p', '--output-format', 'text', '--dangerously-skip-permissions']
+    const child = spawn('claude', args, { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] })
+    child.stdin.write(prompt)
+    child.stdin.end()
+    const job = { lines: [], done: false, error: null, clients: new Set() }
+    jobs.set(jobId, job)
+    function pushLine(line) {
+      job.lines.push(line)
+      const msg = `data: ${JSON.stringify({ line })}\n\n`
+      for (const client of job.clients) client.write(msg)
+    }
+    child.stdout.on('data', d => String(d).split('\n').filter(Boolean).forEach(pushLine))
+    child.stderr.on('data', d => String(d).split('\n').filter(Boolean).forEach(l => pushLine(`⚠ ${l}`)))
+    child.on('close', code => {
+      job.done = true
+      job.error = code !== 0 ? `Exited with code ${code}` : null
+      const msg = `data: ${JSON.stringify({ done: true, error: job.error })}\n\n`
+      for (const client of job.clients) { client.write(msg); client.end() }
+      job.clients.clear()
+      setTimeout(() => jobs.delete(jobId), 10 * 60 * 1000)
+    })
+    return jobId
+  })
+  res.json({ jobIds })
+})
+
+// POST /api/pdf/:num — generate PDF for an application via claude pdf mode
+const pdfJobs = new Map()
+app.post('/api/pdf/:num', (req, res) => {
+  const num = req.params.num
+  const jobId = randomUUID()
+  const prompt = `Generate a tailored PDF CV for report number ${num}. Read modes/pdf.md and follow it completely. Read the report matching number ${num} from the reports/ directory, read cv.md, then generate the PDF.`
+  const args = ['-p', '--output-format', 'text', '--dangerously-skip-permissions']
+  const child = spawn('claude', args, { cwd: ROOT, stdio: ['pipe', 'pipe', 'pipe'] })
+  child.stdin.write(prompt)
+  child.stdin.end()
+  const job = { lines: [], done: false, error: null, clients: new Set() }
+  pdfJobs.set(jobId, job)
+  function pushPdfLine(line) {
+    job.lines.push(line)
+    const msg = `data: ${JSON.stringify({ line })}\n\n`
+    for (const client of job.clients) client.write(msg)
+  }
+  child.stdout.on('data', d => String(d).split('\n').filter(Boolean).forEach(pushPdfLine))
+  child.stderr.on('data', d => String(d).split('\n').filter(Boolean).forEach(l => pushPdfLine(`⚠ ${l}`)))
+  child.on('close', code => {
+    job.done = true
+    job.error = code !== 0 ? `Exited with code ${code}` : null
+    const msg = `data: ${JSON.stringify({ done: true, error: job.error })}\n\n`
+    for (const client of job.clients) { client.write(msg); client.end() }
+    job.clients.clear()
+    setTimeout(() => pdfJobs.delete(jobId), 10 * 60 * 1000)
+  })
+  res.json({ jobId })
+})
+
+app.get('/api/pdf/:jobId/stream', (req, res) => {
+  const job = pdfJobs.get(req.params.jobId)
+  if (!job) return res.status(404).json({ error: 'Job not found' })
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
+  res.flushHeaders()
+  for (const line of job.lines) res.write(`data: ${JSON.stringify({ line })}\n\n`)
+  if (job.done) {
+    res.write(`data: ${JSON.stringify({ done: true, error: job.error })}\n\n`)
+    return res.end()
+  }
+  job.clients.add(res)
+  req.on('close', () => job.clients.delete(res))
+})
+
 app.listen(3099, () => console.log('career-ops API running on http://localhost:3099'))

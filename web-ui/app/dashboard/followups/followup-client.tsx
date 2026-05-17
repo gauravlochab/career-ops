@@ -8,6 +8,33 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
 
+export function DeleteFollowUpButton({ num }: { num: number }) {
+  const router = useRouter()
+  const [deleting, setDeleting] = useState(false)
+
+  async function handleDelete() {
+    if (!confirm("Remove this follow-up?")) return
+    setDeleting(true)
+    try {
+      await fetch(`${BASE}/api/followups/${num}`, { method: "DELETE" })
+      router.refresh()
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <button
+      onClick={handleDelete}
+      disabled={deleting}
+      className="text-muted-foreground hover:text-red-500 disabled:opacity-40 text-sm leading-none px-1"
+      title="Remove follow-up"
+    >
+      {deleting ? "…" : "×"}
+    </button>
+  )
+}
+
 export function TrackButton({ company, role, appliedDate }: { company: string; role: string; appliedDate: string }) {
   const router = useRouter()
   const [tracking, setTracking] = useState(false)
