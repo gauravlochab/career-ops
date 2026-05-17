@@ -351,6 +351,22 @@ app.post('/api/evaluate', async (req, res) => {
   child.stdin.write(prompt)
   child.stdin.end()
 
+  // Heartbeat so the UI doesn't stay stuck on "Starting claude…" during silent processing
+  const heartbeatMsgs = [
+    'Fetching job posting…',
+    'Analyzing fit against your profile…',
+    'Scoring and writing report…',
+  ]
+  let heartbeatIdx = 0
+  const heartbeat = setInterval(() => {
+    if (job.done) { clearInterval(heartbeat); return }
+    if (job.lines.length === 0 && heartbeatIdx < heartbeatMsgs.length) {
+      push(heartbeatMsgs[heartbeatIdx++])
+    } else {
+      clearInterval(heartbeat)
+    }
+  }, 8000)
+
   const push = (line) => {
     job.lines.push(line)
     for (const client of job.clients) {
@@ -363,6 +379,7 @@ app.post('/api/evaluate', async (req, res) => {
   child.stderr.on('data', d => d.toString().split('\n').filter(Boolean).forEach(l => push(`⚠ ${stripAnsi(l)}`)))
 
   child.on('close', (code) => {
+    clearInterval(heartbeat)
     job.done = true
     job.error = code !== 0 ? `Process exited with code ${code}` : null
     const msg = job.error ? `data: ${JSON.stringify({ done: true, error: job.error })}\n\n`
