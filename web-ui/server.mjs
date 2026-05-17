@@ -385,9 +385,14 @@ app.get('/api/patterns', (req, res) => {
   child.stdout.on('data', d => out += d)
   child.stderr.on('data', d => err += d)
   child.on('close', code => {
-    if (code !== 0) return res.status(500).json({ error: err || `Exited ${code}` })
-    try { res.json(JSON.parse(out)) }
-    catch { res.status(500).json({ error: 'JSON parse failed', raw: out.slice(0, 500) }) }
+    // Script may exit 1 with valid JSON (e.g. "not enough data" message)
+    try {
+      const parsed = JSON.parse(out)
+      return res.json(parsed)
+    } catch {
+      if (code !== 0) return res.status(500).json({ error: err || `Exited ${code}` })
+      res.status(500).json({ error: 'JSON parse failed', raw: out.slice(0, 500) })
+    }
   })
 })
 
