@@ -230,21 +230,120 @@ app.post('/api/followups', (req, res) => {
   res.json({ ok: true })
 })
 
+// --- LinkedIn guest API fast path ---
+
+/**
+ * Fetch a LinkedIn job posting via the unauthenticated guest API.
+ * Returns plain text (title + description) on success, null on failure.
+ * LinkedIn's guest endpoint returns an HTML fragment — no login required.
+ */
+async function fetchLinkedInJob(jobId) {
+  const url = `https://www.linkedin.com/jobs-guest/jobs/api/jobPosting/${jobId}`
+  let html
+  try {
+    const resp = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    })
+    if (!resp.ok) return null
+    html = await resp.text()
+  } catch {
+    return null
+  }
+
+  // Strip all HTML tags, decode common entities, collapse whitespace
+  function stripHtml(fragment) {
+    return fragment
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n\n')
+      .replace(/<\/li>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&nbsp;/g, ' ')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim()
+  }
+
+  // Extract job title
+  const titleMatch = html.match(/<h2[^>]*class="[^"]*top-card-layout__title[^"]*"[^>]*>([\s\S]*?)<\/h2>/i)
+  const title = titleMatch ? stripHtml(titleMatch[1]) : null
+
+  // Extract company name (best-effort)
+  const companyMatch = html.match(/<a[^>]*class="[^"]*topcard__org-name-link[^"]*"[^>]*>([\s\S]*?)<\/a>/i)
+  const company = companyMatch ? stripHtml(companyMatch[1]) : null
+
+  // Extract description — LinkedIn wraps it in show-more-less-html__markup
+  const descMatch = html.match(/<div[^>]*class="[^"]*show-more-less-html__markup[^"]*"[^>]*>([\s\S]*?)<\/div>/i)
+  const description = descMatch ? stripHtml(descMatch[1]) : null
+
+  if (!title && !description) return null
+
+  const parts = []
+  if (title) parts.push(`Job Title: ${title}`)
+  if (company) parts.push(`Company: ${company}`)
+  if (description) parts.push(`\nJob Description:\n${description}`)
+
+  return parts.join('\n')
+}
+
 // --- Evaluate ---
 
 const jobs = new Map() // jobId -> { lines: string[], done: bool, error: string|null, clients: Set<res> }
 
-app.post('/api/evaluate', (req, res) => {
-  const { url } = req.body
-  if (!url || !/^https?:\/\/.+/.test(url)) return res.status(400).json({ error: 'Invalid URL' })
+app.post('/api/evaluate', async (req, res) => {
+  const { url, pastedJd } = req.body
+
+  // pastedJd-only mode: no URL required
+  if (!pastedJd && (!url || !/^https?:\/\/.+/.test(url))) {
+    return res.status(400).json({ error: 'Invalid URL' })
+  }
 
   const jobId = randomUUID()
   const job = { lines: [], done: false, error: null, clients: new Set() }
   jobs.set(jobId, job)
 
-  // Headless mode: skip Playwright (no browser), use WebFetch fallback for verification.
-  // Prompt is piped via stdin so claude -p doesn't wait for stdin data.
-  const prompt = `HEADLESS MODE: You are running as a background worker spawned from the web UI. Playwright/browser is NOT available — use WebFetch for job posting verification and mark the report header with **Verification:** unconfirmed (batch mode). Do NOT open any browser windows or attempt interactive login.\n\nEvaluate this job posting: ${url}`
+  // Determine the job content to pass to claude
+  let jobContent = null
+  let fetchSource = 'url'
+
+  if (pastedJd && pastedJd.trim()) {
+    // User pasted the JD directly — use it as-is, skip any fetching
+    jobContent = pastedJd.trim()
+    fetchSource = 'pasted'
+  } else {
+    // Try LinkedIn guest API fast path before falling back to claude's WebFetch
+    const linkedInMatch = url.match(/linkedin\.com\/jobs\/view\/(\d+)/)
+    if (linkedInMatch) {
+      const linkedInText = await fetchLinkedInJob(linkedInMatch[1])
+      if (linkedInText) {
+        jobContent = linkedInText
+        fetchSource = 'linkedin-api'
+      }
+      // If fetch failed, fall through to letting claude fetch via WebFetch
+    }
+  }
+
+  // Build prompt
+  let prompt
+  if (jobContent) {
+    const sourceNote = fetchSource === 'pasted'
+      ? 'The user pasted the job description directly.'
+      : 'Job content was pre-fetched via the LinkedIn guest API (no browser needed).'
+    const urlLine = url ? `\nJob URL: ${url}` : ''
+    prompt = `HEADLESS MODE: You are running as a background worker spawned from the web UI. Playwright/browser is NOT available — mark the report header with **Verification:** unconfirmed (batch mode). Do NOT open any browser windows or attempt interactive login.\n\n${sourceNote}${urlLine}\n\nHere is the full job posting content:\n\n${jobContent}\n\nEvaluate this job posting and follow the full auto-pipeline: run all evaluation blocks (A-G), save the report, generate the PDF if score >= 3.0, and update the tracker.`
+  } else {
+    // No pre-fetched content — let claude fetch the URL itself via WebFetch
+    prompt = `HEADLESS MODE: You are running as a background worker spawned from the web UI. Playwright/browser is NOT available — use WebFetch for job posting verification and mark the report header with **Verification:** unconfirmed (batch mode). Do NOT open any browser windows or attempt interactive login.\n\nEvaluate this job posting: ${url}`
+  }
+
   const child = spawn('claude', ['-p', '--output-format', 'text', '--dangerously-skip-permissions'], {
     cwd: ROOT,
     env: { ...process.env },

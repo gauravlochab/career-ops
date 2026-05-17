@@ -47,6 +47,9 @@ export function EvaluateClient({ initialUrl }: { initialUrl?: string }) {
     if (prefill) setUrl(prefill)
   }, [initialUrl, searchParams])
 
+  const [pastedJd, setPastedJd] = useState("")
+  const [showPaste, setShowPaste] = useState(false)
+
   const [state, setState] = useState<State>("idle")
   const [lines, setLines] = useState<string[]>([])
   const [currentStage, setCurrentStage] = useState<string | null>(null)
@@ -63,9 +66,12 @@ export function EvaluateClient({ initialUrl }: { initialUrl?: string }) {
 
   useEffect(() => () => { esRef.current?.close() }, [])
 
+  // Submission is valid if URL is filled, or pasted JD is filled (or both)
+  const canSubmit = url.trim().length > 0 || pastedJd.trim().length > 0
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
-    if (!url.trim()) return
+    if (!canSubmit) return
 
     setState("running")
     setLines([])
@@ -74,16 +80,24 @@ export function EvaluateClient({ initialUrl }: { initialUrl?: string }) {
     setCompletedStages([])
     seenStages.current = new Set()
 
+    // Build request body — include pastedJd when present
+    const body: Record<string, string> = {}
+    if (url.trim()) body.url = url.trim()
+    if (pastedJd.trim()) body.pastedJd = pastedJd.trim()
+    // If only pasted JD with no URL, send a placeholder so the server's URL validation
+    // is satisfied only when there really is a URL; the server accepts pastedJd-only.
+    // (Server was updated to allow pastedJd without url.)
+
     let jobId: string
     try {
       const r = await fetch(`${API_BASE}/api/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url: url.trim() }),
+        body: JSON.stringify(body),
       })
       if (!r.ok) {
-        const body = await r.json().catch(() => ({}))
-        throw new Error(body.error || `Server error ${r.status}`)
+        const errBody = await r.json().catch(() => ({}))
+        throw new Error(errBody.error || `Server error ${r.status}`)
       }
       const data = await r.json()
       jobId = data.jobId
@@ -146,6 +160,8 @@ export function EvaluateClient({ initialUrl }: { initialUrl?: string }) {
   function handleReset() {
     esRef.current?.close()
     setUrl("")
+    setPastedJd("")
+    setShowPaste(false)
     setLines([])
     setErrorMsg("")
     setCurrentStage(null)
@@ -163,28 +179,60 @@ export function EvaluateClient({ initialUrl }: { initialUrl?: string }) {
         <CardHeader>
           <CardTitle className="text-base">Job URL</CardTitle>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="flex gap-2">
-            <Input
-              type="url"
-              placeholder="https://jobs.lever.co/company/job-id"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-              disabled={state === "running"}
-              className="flex-1"
-            />
-            {state === "idle" || state === "error" ? (
-              <Button type="submit" disabled={!url.trim()}>
-                Evaluate
-              </Button>
-            ) : state === "running" ? (
-              <Button type="button" variant="outline" disabled>
-                Running…
-              </Button>
-            ) : (
-              <Button type="button" variant="outline" onClick={handleReset}>
-                Evaluate another
-              </Button>
+        <CardContent className="space-y-3">
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="flex gap-2">
+              <Input
+                type="url"
+                placeholder="https://jobs.lever.co/company/job-id"
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                disabled={state === "running"}
+                className="flex-1"
+              />
+              {state === "idle" || state === "error" ? (
+                <Button type="submit" disabled={!canSubmit}>
+                  Evaluate
+                </Button>
+              ) : state === "running" ? (
+                <Button type="button" variant="outline" disabled>
+                  Running…
+                </Button>
+              ) : (
+                <Button type="button" variant="outline" onClick={handleReset}>
+                  Evaluate another
+                </Button>
+              )}
+            </div>
+
+            {/* Paste JD toggle */}
+            {(state === "idle" || state === "error") && (
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowPaste(v => !v)}
+                  className="text-xs text-muted-foreground hover:text-foreground transition-colors select-none"
+                >
+                  {showPaste ? "hide paste area ▴" : "or paste job description ▾"}
+                </button>
+
+                {showPaste && (
+                  <div className="mt-2 space-y-1">
+                    <textarea
+                      rows={8}
+                      placeholder="Paste the full job description here…"
+                      value={pastedJd}
+                      onChange={e => setPastedJd(e.target.value)}
+                      className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring resize-y"
+                    />
+                    <p className="text-[11px] text-muted-foreground">
+                      {url.trim()
+                        ? "URL is set — the pasted text will be used instead of fetching the URL."
+                        : "No URL needed — evaluation will use the pasted text only."}
+                    </p>
+                  </div>
+                )}
+              </div>
             )}
           </form>
         </CardContent>
