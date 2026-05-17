@@ -4,19 +4,26 @@ import { useRouter } from "next/navigation"
 import { useState } from "react"
 import { Button } from "@/components/ui/button"
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE } from "@/lib/constants"
 
-export function PipelineActions({ url, done = false }: { url: string; done?: boolean }) {
+interface PipelineActionsProps {
+  url: string
+  done?: boolean
+  /** Override the default evaluate link destination. Defaults to /dashboard/evaluate?url=... */
+  evaluateHref?: string
+}
+
+export function PipelineActions({ url, done = false, evaluateHref }: PipelineActionsProps) {
   const router = useRouter()
   const [skipping, setSkipping] = useState(false)
   const [restoring, setRestoring] = useState(false)
 
-  const evaluateHref = `/dashboard/evaluate?url=${encodeURIComponent(url)}`
+  const resolvedEvaluateHref = evaluateHref ?? `/dashboard/evaluate?url=${encodeURIComponent(url)}`
 
   async function handleSkip() {
     setSkipping(true)
     try {
-      await fetch(`${BASE}/api/pipeline`, {
+      await fetch(`${API_BASE}/api/pipeline`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, done: true }),
@@ -30,7 +37,7 @@ export function PipelineActions({ url, done = false }: { url: string; done?: boo
   async function handleRestore() {
     setRestoring(true)
     try {
-      await fetch(`${BASE}/api/pipeline`, {
+      await fetch(`${API_BASE}/api/pipeline`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url, done: false }),
@@ -63,7 +70,7 @@ export function PipelineActions({ url, done = false }: { url: string; done?: boo
         Open ↗
       </a>
       <Button asChild size="sm" variant="default" className="text-xs h-7">
-        <a href={evaluateHref}>Evaluate</a>
+        <a href={resolvedEvaluateHref}>Evaluate</a>
       </Button>
       <Button
         size="sm"

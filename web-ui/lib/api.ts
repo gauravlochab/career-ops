@@ -1,4 +1,4 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE as BASE } from "@/lib/constants"
 
 // 10-second revalidation: fast enough to reflect new evaluations, avoids
 // re-parsing markdown files on every single request.

@@ -32,7 +32,7 @@ function extractNewCount(lines: string[]): number | null {
   return null
 }
 
-export default function ScannerPage() {
+export function ScannerClient() {
   const [company, setCompany] = useState("")
   const [state, setState] = useState<State>("idle")
   const [lines, setLines] = useState<string[]>([])
@@ -104,7 +104,9 @@ export default function ScannerPage() {
           setState("error")
         } else {
           if (currentStageRef.current) {
-            setCompletedStages(cs => cs.includes(currentStageRef.current!) ? cs : [...cs, currentStageRef.current!])
+            setCompletedStages(cs =>
+              cs.includes(currentStageRef.current!) ? cs : [...cs, currentStageRef.current!]
+            )
           }
           setCurrentStage(null)
           setState("done")
@@ -135,13 +137,6 @@ export default function ScannerPage() {
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Scan for Jobs</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Zero-token scan of Greenhouse, Ashby, and Lever portals. Results go directly to your Pipeline Inbox.
-        </p>
-      </div>
-
       <Card className="max-w-2xl">
         <CardHeader>
           <CardTitle className="text-base">Scan Options</CardTitle>
@@ -180,13 +175,15 @@ export default function ScannerPage() {
                     {newCount} new job{newCount !== 1 ? "s" : ""} added to your pipeline
                   </p>
                 ) : (
-                  <p className="text-sm text-muted-foreground mt-0.5">Check pipeline for new URLs</p>
+                  <p className="text-sm text-muted-foreground mt-0.5">
+                    Check pipeline for new URLs
+                  </p>
                 )}
               </div>
             </div>
             <div className="mt-4 flex gap-2">
               <Button asChild>
-                <a href="/dashboard/pipeline">View Pipeline</a>
+                <a href="/dashboard/find?tab=pipeline">View Pipeline</a>
               </Button>
               <Button variant="outline" onClick={handleReset}>Scan Again</Button>
             </div>
@@ -221,9 +218,11 @@ export default function ScannerPage() {
                     <span
                       key={stage}
                       className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
-                        isDone ? "bg-green-100 text-green-700" :
-                        isActive ? "bg-blue-100 text-blue-700 animate-pulse" :
-                        "bg-muted text-muted-foreground"
+                        isDone
+                          ? "bg-green-100 text-green-700"
+                          : isActive
+                          ? "bg-blue-100 text-blue-700 animate-pulse"
+                          : "bg-muted text-muted-foreground"
                       }`}
                     >
                       {isDone ? "✓ " : isActive ? "⟳ " : ""}{stage}

@@ -2,21 +2,35 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-
 import { API_BASE } from "@/lib/constants"
+
+interface BlockerItem {
+  reason: string
+  count: number
+}
 
 interface PatternsData {
   totalApplications?: number
   conversionRates?: Record<string, number>
-  topBlockers?: { reason: string; count: number }[]
+  topBlockers?: BlockerItem[]
   techGaps?: string[]
   recommendations?: string[]
   avgScoreByStatus?: Record<string, number>
-  blockerAnalysis?: { reason: string; count: number }[]
+  blockerAnalysis?: BlockerItem[]
   [key: string]: unknown
 }
 
-function FunnelRow({ label, count, total, rate }: { label: string; count: number; total: number; rate?: number | null }) {
+function FunnelRow({
+  label,
+  count,
+  total,
+  rate,
+}: {
+  label: string
+  count: number
+  total: number
+  rate?: number | null
+}) {
   const pct = total > 0 ? (count / total) * 100 : 0
   return (
     <div className="flex items-center gap-3">
@@ -37,7 +51,7 @@ function FunnelRow({ label, count, total, rate }: { label: string; count: number
   )
 }
 
-export default function InsightsPage() {
+export function InsightsClient() {
   const [data, setData] = useState<PatternsData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -50,70 +64,49 @@ export default function InsightsPage() {
       .finally(() => setLoading(false))
   }, [])
 
+  if (loading) {
+    return (
+      <div className="flex flex-col gap-4 max-w-3xl">
+        {[1, 2, 3].map(i => (
+          <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50/50 px-4 py-3 text-sm text-red-800">
+        Could not load insights: {error}
+      </div>
+    )
+  }
+
   const total = data?.totalApplications ?? 0
   const blockers = data?.blockerAnalysis ?? data?.topBlockers ?? []
   const techGaps = data?.techGaps ?? []
   const recommendations = data?.recommendations ?? []
   const avgScores = data?.avgScoreByStatus ?? {}
 
-  // Build funnel from conversionRates or avgScoreByStatus keys
   const funnelOrder = ["Evaluated", "Applied", "Responded", "Interview", "Offer"]
   const rates = data?.conversionRates ?? {}
 
-  if (loading) {
-    return (
-      <>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Insights</h1>
-          <p className="text-muted-foreground text-sm mt-1">AI-powered pattern analysis of your applications</p>
-        </div>
-        <div className="flex flex-col gap-4 max-w-3xl">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-32 rounded-xl bg-muted animate-pulse" />
-          ))}
-        </div>
-      </>
-    )
-  }
-
-  if (error) {
-    return (
-      <>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Insights</h1>
-        </div>
-        <div className="rounded-lg border border-red-200 bg-red-50/50 px-4 py-3 text-sm text-red-800">
-          Could not load insights: {error}
-        </div>
-      </>
-    )
-  }
-
   if (total < 5) {
     return (
-      <>
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Insights</h1>
-          <p className="text-muted-foreground text-sm mt-1">AI-powered pattern analysis of your applications</p>
-        </div>
-        <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
-          <p className="text-3xl">📊</p>
-          <p className="font-medium">Not enough data yet</p>
-          <p className="text-sm">Need at least 5 applications beyond Evaluated to generate insights</p>
-          <p className="text-sm">Currently: {total} application{total !== 1 ? "s" : ""}</p>
-        </div>
-      </>
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+        <p className="text-3xl">📊</p>
+        <p className="font-medium">Not enough data yet</p>
+        <p className="text-sm">Need at least 5 applications beyond Evaluated to generate insights</p>
+        <p className="text-sm">Currently: {total} application{total !== 1 ? "s" : ""}</p>
+      </div>
     )
   }
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Insights</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          AI-powered pattern analysis · {total} application{total !== 1 ? "s" : ""}
-        </p>
-      </div>
+      <p className="text-muted-foreground text-sm -mt-2">
+        AI-powered pattern analysis · {total} application{total !== 1 ? "s" : ""}
+      </p>
 
       {/* Conversion funnel */}
       <Card>
@@ -154,7 +147,9 @@ export default function InsightsPage() {
               {blockers.slice(0, 6).map((b, i) => (
                 <div key={i} className="flex items-center justify-between text-sm gap-2">
                   <span className="text-muted-foreground truncate">{b.reason}</span>
-                  <span className="font-mono text-xs shrink-0 bg-red-100 text-red-700 px-1.5 py-0.5 rounded">{b.count}×</span>
+                  <span className="font-mono text-xs shrink-0 bg-red-100 text-red-700 px-1.5 py-0.5 rounded">
+                    {b.count}×
+                  </span>
                 </div>
               ))}
             </CardContent>
@@ -169,7 +164,12 @@ export default function InsightsPage() {
           <CardContent>
             <div className="flex flex-wrap gap-2">
               {techGaps.map((gap, i) => (
-                <span key={i} className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-medium">{gap}</span>
+                <span
+                  key={i}
+                  className="text-xs px-2 py-1 rounded-full bg-orange-100 text-orange-700 font-medium"
+                >
+                  {gap}
+                </span>
               ))}
             </div>
           </CardContent>

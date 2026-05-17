@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE } from "@/lib/constants"
 
 export function DeleteFollowUpButton({ num }: { num: number }) {
   const router = useRouter()
@@ -16,7 +16,7 @@ export function DeleteFollowUpButton({ num }: { num: number }) {
     if (!confirm("Remove this follow-up?")) return
     setDeleting(true)
     try {
-      await fetch(`${BASE}/api/followups/${num}`, { method: "DELETE" })
+      await fetch(`${API_BASE}/api/followups/${num}`, { method: "DELETE" })
       router.refresh()
     } finally {
       setDeleting(false)
@@ -44,7 +44,7 @@ export function TrackButton({ company, role, appliedDate }: { company: string; r
     const today = new Date()
     const dueDate = new Date(today.getTime() + 7 * 86400000).toISOString().slice(0, 10)
     try {
-      await fetch(`${BASE}/api/followups`, {
+      await fetch(`${API_BASE}/api/followups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ company, role, appliedDate, nextAction: "Follow up via email", dueDate }),
@@ -79,7 +79,7 @@ export function AddFollowUpForm() {
     if (!form.company.trim()) return
     setSaving(true)
     try {
-      await fetch(`${BASE}/api/followups`, {
+      await fetch(`${API_BASE}/api/followups`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

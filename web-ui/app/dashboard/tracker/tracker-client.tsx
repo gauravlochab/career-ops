@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { STATUS_LABELS, STATUS_COLORS, ALL_STATUSES, scoreVariant, type Application, type CanonicalStatus } from "@/lib/api"
 import { marked } from "marked"
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE } from "@/lib/constants"
 
 function StatusSelect({ app }: { app: Application }) {
   const router = useRouter()
@@ -17,7 +17,7 @@ function StatusSelect({ app }: { app: Application }) {
     const status = e.target.value as CanonicalStatus
     setSaving(true)
     try {
-      await fetch(`${BASE}/api/applications/${app.number}`, {
+      await fetch(`${API_BASE}/api/applications/${app.number}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status }),
@@ -51,7 +51,7 @@ function ReportDrawer({ app, open, onClose }: { app: Application; open: boolean;
     if (!open || !app.reportNumber) return
     setLoading(true)
     setFetchError(false)
-    fetch(`${BASE}/api/report/${app.reportNumber}`)
+    fetch(`${API_BASE}/api/report/${app.reportNumber}`)
       .then(r => r.ok ? r.json() : Promise.reject())
       .then(d => setContent(d.content))
       .catch(() => setFetchError(true))

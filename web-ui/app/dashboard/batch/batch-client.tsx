@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import type { PipelineItem } from "@/lib/api"
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE } from "@/lib/constants"
 
 const STAGE_PATTERNS: { label: string; pattern: RegExp }[] = [
   { label: "Fetching job posting", pattern: /fetch|scraping|getting|retrieving|navigat/i },
@@ -166,7 +166,7 @@ export function BatchClient({ items }: { items: PipelineItem[] }) {
 
     let jobIds: string[]
     try {
-      const r = await fetch(`${BASE}/api/batch`, {
+      const r = await fetch(`${API_BASE}/api/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ urls: [...selected] }),
@@ -188,7 +188,7 @@ export function BatchClient({ items }: { items: PipelineItem[] }) {
 
     jobIds.forEach((jobId, idx) => {
       const url = selectedItems[idx]?.url ?? ""
-      const es = new EventSource(`${BASE}/api/evaluate/${jobId}/stream`)
+      const es = new EventSource(`${API_BASE}/api/evaluate/${jobId}/stream`)
       esRefs.current.set(jobId, es)
 
       updateJob(jobId, { state: "running" })
@@ -219,7 +219,7 @@ export function BatchClient({ items }: { items: PipelineItem[] }) {
               return prev.map(x => x.jobId === jobId ? { ...x, state: "done", score, currentStage: null } : x)
             })
             // Auto-mark pipeline done
-            fetch(`${BASE}/api/pipeline`, {
+            fetch(`${API_BASE}/api/pipeline`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ url, done: true }),

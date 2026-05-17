@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE } from "@/lib/constants"
 
 type State = "idle" | "running" | "done" | "error"
 
@@ -76,7 +76,7 @@ function EvaluatePageInner() {
 
     let jobId: string
     try {
-      const r = await fetch(`${BASE}/api/evaluate`, {
+      const r = await fetch(`${API_BASE}/api/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url: url.trim() }),
@@ -93,7 +93,7 @@ function EvaluatePageInner() {
       return
     }
 
-    const es = new EventSource(`${BASE}/api/evaluate/${jobId}/stream`)
+    const es = new EventSource(`${API_BASE}/api/evaluate/${jobId}/stream`)
     esRef.current = es
 
     es.onmessage = (ev) => {
@@ -128,7 +128,7 @@ function EvaluatePageInner() {
           // Auto-mark pipeline item done if URL came from ?url= param
           const fromPipeline = searchParams?.get("url")
           if (fromPipeline) {
-            fetch(`${BASE}/api/pipeline`, {
+            fetch(`${API_BASE}/api/pipeline`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ url: fromPipeline, done: true }),

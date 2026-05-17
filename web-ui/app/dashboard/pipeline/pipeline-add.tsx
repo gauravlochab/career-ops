@@ -6,9 +6,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE } from "@/lib/constants"
 
-export function AddToPipelineForm() {
+interface AddToPipelineFormProps {
+  /** The href to navigate to after a successful add (defaults to /dashboard/pipeline). */
+  baseHref?: string
+}
+
+export function AddToPipelineForm({ baseHref }: AddToPipelineFormProps = {}) {
   const router = useRouter()
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
@@ -23,7 +28,7 @@ export function AddToPipelineForm() {
     if (!form.url.trim()) return
     setSaving(true)
     try {
-      await fetch(`${BASE}/api/pipeline`, {
+      await fetch(`${API_BASE}/api/pipeline`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(form),

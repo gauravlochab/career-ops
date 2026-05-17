@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { marked } from "marked"
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE } from "@/lib/constants"
 
 // Extract STAR questions from story bank markdown
 function extractQuestions(markdown: string): string[] {
@@ -78,7 +78,7 @@ export function CompanyFileViewer({ files }: { files: string[] }) {
     setSelected(name)
     setLoading(true)
     try {
-      const r = await fetch(`${BASE}/api/interview-file/${encodeURIComponent(name)}`)
+      const r = await fetch(`${API_BASE}/api/interview-file/${encodeURIComponent(name)}`)
       if (r.ok) {
         const d = await r.json()
         setContent(d.content)

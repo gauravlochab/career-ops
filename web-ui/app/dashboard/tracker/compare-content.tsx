@@ -5,7 +5,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { STATUS_LABELS, STATUS_COLORS, scoreVariant, type Application } from "@/lib/api"
 import { marked } from "marked"
-
 import { API_BASE } from "@/lib/constants"
 
 interface ReportContent {
@@ -25,7 +24,7 @@ function AppSelect({
   exclude: string
   label: string
 }) {
-  const options = apps.filter(a => a.reportNumber !== null && String(a.number) !== exclude)
+  const options = apps.filter(a => String(a.number) !== exclude)
   return (
     <div className="flex flex-col gap-1">
       <label className="text-xs font-medium text-muted-foreground">{label}</label>
@@ -121,19 +120,11 @@ function OfferCard({
   )
 }
 
-export default function ComparePage() {
-  const [apps, setApps] = useState<Application[]>([])
+export function CompareContent({ apps }: { apps: Application[] }) {
   const [leftId, setLeftId] = useState("")
   const [rightId, setRightId] = useState("")
   const [reports, setReports] = useState<Record<string, string | null>>({})
   const [loadingReports, setLoadingReports] = useState<Record<string, boolean>>({})
-
-  useEffect(() => {
-    fetch(`${API_BASE}/api/applications`)
-      .then(r => r.ok ? r.json() : [])
-      .then((data: Application[]) => setApps(data.filter(a => a.reportNumber !== null)))
-      .catch(() => {})
-  }, [])
 
   async function loadReport(appNum: string, reportNum: string) {
     if (reports[appNum] !== undefined) return
@@ -165,30 +156,21 @@ export default function ComparePage() {
   const leftHighlight = leftApp && rightApp ? leftScore >= rightScore : false
   const rightHighlight = leftApp && rightApp ? rightScore > leftScore : false
 
+  if (apps.length < 2) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+        <p className="text-3xl">⚖️</p>
+        <p className="font-medium">Need at least 2 evaluated applications to compare</p>
+        <p className="text-sm">Evaluate more jobs to unlock offer comparison</p>
+      </div>
+    )
+  }
+
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Compare Offers</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Side-by-side comparison of two evaluated applications.
-        </p>
-      </div>
-
       <div className="grid grid-cols-2 gap-4 max-w-4xl">
-        <AppSelect
-          apps={apps}
-          value={leftId}
-          onChange={setLeftId}
-          exclude={rightId}
-          label="Application A"
-        />
-        <AppSelect
-          apps={apps}
-          value={rightId}
-          onChange={setRightId}
-          exclude={leftId}
-          label="Application B"
-        />
+        <AppSelect apps={apps} value={leftId} onChange={setLeftId} exclude={rightId} label="Application A" />
+        <AppSelect apps={apps} value={rightId} onChange={setRightId} exclude={leftId} label="Application B" />
       </div>
 
       {!leftApp && !rightApp && (

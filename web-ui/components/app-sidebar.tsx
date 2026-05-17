@@ -2,18 +2,12 @@
 
 import * as React from "react"
 import {
-  IconBriefcase,
   IconChartBar,
-  IconChartPie,
-  IconClipboardList,
   IconDashboard,
   IconFileTypePdf,
-  IconGitCompare,
-  IconMailForward,
-  IconPlayerPlay,
-  IconSchool,
+  IconMicroscope,
   IconSearch,
-  IconStack2,
+  IconClipboardList,
 } from "@tabler/icons-react"
 
 import { NavMain } from "@/components/nav-main"
@@ -35,18 +29,12 @@ const data = {
     avatar: "",
   },
   navMain: [
-    { title: "Dashboard",      url: "/dashboard",            icon: IconDashboard },
-    { title: "Evaluate a Job", url: "/dashboard/evaluate",   icon: IconPlayerPlay },
-    { title: "Tracker",        url: "/dashboard/tracker",    icon: IconClipboardList },
-    { title: "Pipeline Inbox", url: "/dashboard/pipeline",   icon: IconBriefcase },
-    { title: "Follow-ups",     url: "/dashboard/followups",  icon: IconMailForward },
-    { title: "Interview Prep", url: "/dashboard/interview",  icon: IconSchool },
-    { title: "Analytics",      url: "/dashboard/analytics",  icon: IconChartBar },
-    { title: "Scan for Jobs",  url: "/dashboard/scanner",    icon: IconSearch },
-    { title: "Batch Evaluate", url: "/dashboard/batch",      icon: IconStack2 },
-    { title: "Insights",       url: "/dashboard/insights",   icon: IconChartPie },
-    { title: "Generate PDFs",  url: "/dashboard/pdf",        icon: IconFileTypePdf },
-    { title: "Compare Offers", url: "/dashboard/compare",    icon: IconGitCompare },
+    { title: "Dashboard",    url: "/dashboard",              icon: IconDashboard },
+    { title: "Find Jobs",    url: "/dashboard/find",         icon: IconSearch },
+    { title: "Tracker",      url: "/dashboard/tracker",      icon: IconClipboardList },
+    { title: "Intelligence", url: "/dashboard/intel",        icon: IconChartBar },
+    { title: "Interview Prep", url: "/dashboard/prep",       icon: IconMicroscope },
+    { title: "Generate PDFs", url: "/dashboard/pdf",         icon: IconFileTypePdf },
   ],
 }
 

@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { scoreVariant, STATUS_LABELS, STATUS_COLORS, type Application } from "@/lib/api"
 
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3099"
+import { API_BASE } from "@/lib/constants"
 
 type GenState = "idle" | "running" | "done" | "error"
 
@@ -163,7 +163,7 @@ export function PdfClient({ apps }: { apps: Application[] }) {
 
     let jobId: string
     try {
-      const r = await fetch(`${BASE}/api/pdf/${app.reportNumber}`, { method: "POST" })
+      const r = await fetch(`${API_BASE}/api/pdf/${app.reportNumber}`, { method: "POST" })
       if (!r.ok) {
         const body = await r.json().catch(() => ({}))
         throw new Error(body.error || `Server error ${r.status}`)
@@ -177,7 +177,7 @@ export function PdfClient({ apps }: { apps: Application[] }) {
       return
     }
 
-    const es = new EventSource(`${BASE}/api/pdf/${jobId}/stream`)
+    const es = new EventSource(`${API_BASE}/api/pdf/${jobId}/stream`)
     esRefs.current.set(num, es)
 
     const seenStages = new Set<string>()

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -10,11 +11,11 @@ import { API_BASE } from "@/lib/constants"
 type State = "idle" | "running" | "done" | "error"
 
 const STAGE_PATTERNS: { label: string; pattern: RegExp }[] = [
-  { label: "Connecting to portals", pattern: /fetch|connect|request|greenhouse|ashby|lever/i },
-  { label: "Searching jobs",        pattern: /search|query|scan|found|job/i },
-  { label: "Filtering results",     pattern: /filter|dedup|skip|seen|new/i },
-  { label: "Saving to pipeline",    pattern: /writ|sav|pipeline|append/i },
-  { label: "Done",                  pattern: /complete|finish|total|result/i },
+  { label: "Fetching job posting", pattern: /fetch|scraping|getting|retrieving|navigat/i },
+  { label: "Analyzing fit",        pattern: /analyz|evaluat|assess|review/i },
+  { label: "Scoring",              pattern: /scor|block [A-F]|A\.|B\.|C\.|D\.|E\.|F\./i },
+  { label: "Writing report",       pattern: /report|writing|generat/i },
+  { label: "Updating tracker",     pattern: /tracker|application|tsv|merge/i },
 ]
 
 function detectStage(line: string): string | null {
@@ -24,16 +25,28 @@ function detectStage(line: string): string | null {
   return null
 }
 
-function extractNewCount(lines: string[]): number | null {
+function extractSummary(lines: string[]): { score: string | null; company: string | null } {
+  let score: string | null = null
+  let company: string | null = null
   for (const line of lines) {
-    const m = line.match(/(\d+)\s+new/i)
-    if (m) return parseInt(m[1], 10)
+    const scoreMatch = line.match(/(\d+\.?\d*)\/5/)
+    if (scoreMatch && !score) score = scoreMatch[1]
+    const companyMatch = line.match(/(?:company|empresa|firma)[:\s]+([A-Z][a-zA-Z\s]+?)(?:\s*[-|,]|$)/i)
+    if (companyMatch && !company) company = companyMatch[1].trim()
   }
-  return null
+  return { score, company }
 }
 
-export default function ScannerPage() {
-  const [company, setCompany] = useState("")
+export function EvaluateClient({ initialUrl }: { initialUrl?: string }) {
+  const searchParams = useSearchParams()
+  const [url, setUrl] = useState(initialUrl ?? "")
+
+  useEffect(() => {
+    // Prefer initialUrl prop, then fall back to ?url= searchParam
+    const prefill = initialUrl ?? searchParams?.get("url") ?? ""
+    if (prefill) setUrl(prefill)
+  }, [initialUrl, searchParams])
+
   const [state, setState] = useState<State>("idle")
   const [lines, setLines] = useState<string[]>([])
   const [currentStage, setCurrentStage] = useState<string | null>(null)
@@ -42,7 +55,7 @@ export default function ScannerPage() {
   const logRef = useRef<HTMLDivElement>(null)
   const esRef = useRef<EventSource | null>(null)
   const seenStages = useRef<Set<string>>(new Set())
-  const currentStageRef = useRef<string | null>(null)
+  const router = useRouter()
 
   useEffect(() => {
     if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight
@@ -50,22 +63,23 @@ export default function ScannerPage() {
 
   useEffect(() => () => { esRef.current?.close() }, [])
 
-  async function handleScan(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    if (!url.trim()) return
+
     setState("running")
     setLines([])
     setErrorMsg("")
     setCurrentStage(null)
     setCompletedStages([])
     seenStages.current = new Set()
-    currentStageRef.current = null
 
     let jobId: string
     try {
-      const r = await fetch(`${API_BASE}/api/scan`, {
+      const r = await fetch(`${API_BASE}/api/evaluate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ company: company.trim() || undefined }),
+        body: JSON.stringify({ url: url.trim() }),
       })
       if (!r.ok) {
         const body = await r.json().catch(() => ({}))
@@ -79,7 +93,7 @@ export default function ScannerPage() {
       return
     }
 
-    const es = new EventSource(`${API_BASE}/api/scan/${jobId}/stream`)
+    const es = new EventSource(`${API_BASE}/api/evaluate/${jobId}/stream`)
     esRef.current = es
 
     es.onmessage = (ev) => {
@@ -89,13 +103,17 @@ export default function ScannerPage() {
         const stage = detectStage(msg.line)
         if (stage && !seenStages.current.has(stage)) {
           seenStages.current.add(stage)
-          const prev = currentStageRef.current
-          if (prev && prev !== stage) {
-            setCompletedStages(cs => cs.includes(prev) ? cs : [...cs, prev])
-          }
-          currentStageRef.current = stage
           setCurrentStage(stage)
+          setCompletedStages(prev => {
+            return prev
+          })
         }
+        setCompletedStages(prev => {
+          if (stage && stage !== currentStage && currentStage && !prev.includes(currentStage)) {
+            return [...prev, currentStage]
+          }
+          return prev
+        })
       }
       if (msg.done) {
         es.close()
@@ -103,11 +121,17 @@ export default function ScannerPage() {
           setErrorMsg(msg.error)
           setState("error")
         } else {
-          if (currentStageRef.current) {
-            setCompletedStages(cs => cs.includes(currentStageRef.current!) ? cs : [...cs, currentStageRef.current!])
-          }
           setCurrentStage(null)
           setState("done")
+          // Auto-mark pipeline item done if URL came from prefill (pipeline link)
+          const fromPipeline = initialUrl ?? searchParams?.get("url")
+          if (fromPipeline) {
+            fetch(`${API_BASE}/api/pipeline`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ url: fromPipeline, done: true }),
+            }).catch(() => {})
+          }
         }
       }
     }
@@ -121,7 +145,7 @@ export default function ScannerPage() {
 
   function handleReset() {
     esRef.current?.close()
-    setCompany("")
+    setUrl("")
     setLines([])
     setErrorMsg("")
     setCurrentStage(null)
@@ -130,39 +154,37 @@ export default function ScannerPage() {
     setState("idle")
   }
 
+  const summary = state === "done" ? extractSummary(lines) : { score: null, company: null }
   const allStages = STAGE_PATTERNS.map(s => s.label)
-  const newCount = state === "done" ? extractNewCount(lines) : null
 
   return (
     <>
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight">Scan for Jobs</h1>
-        <p className="text-muted-foreground text-sm mt-1">
-          Zero-token scan of Greenhouse, Ashby, and Lever portals. Results go directly to your Pipeline Inbox.
-        </p>
-      </div>
-
       <Card className="max-w-2xl">
         <CardHeader>
-          <CardTitle className="text-base">Scan Options</CardTitle>
+          <CardTitle className="text-base">Job URL</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleScan} className="flex gap-2">
+          <form onSubmit={handleSubmit} className="flex gap-2">
             <Input
-              placeholder="Company name (leave blank to scan all)"
-              value={company}
-              onChange={e => setCompany(e.target.value)}
+              type="url"
+              placeholder="https://jobs.lever.co/company/job-id"
+              value={url}
+              onChange={e => setUrl(e.target.value)}
               disabled={state === "running"}
               className="flex-1"
             />
             {state === "idle" || state === "error" ? (
-              <Button type="submit">
-                {company.trim() ? "Scan Company" : "Scan All"}
+              <Button type="submit" disabled={!url.trim()}>
+                Evaluate
               </Button>
             ) : state === "running" ? (
-              <Button type="button" variant="outline" disabled>Running…</Button>
+              <Button type="button" variant="outline" disabled>
+                Running…
+              </Button>
             ) : (
-              <Button type="button" variant="outline" onClick={handleReset}>Scan Again</Button>
+              <Button type="button" variant="outline" onClick={handleReset}>
+                Evaluate another
+              </Button>
             )}
           </form>
         </CardContent>
@@ -174,21 +196,32 @@ export default function ScannerPage() {
             <div className="flex items-start gap-4">
               <div className="text-3xl">✅</div>
               <div className="flex-1">
-                <p className="font-semibold text-base">Scan complete</p>
-                {newCount !== null ? (
-                  <p className="text-sm text-muted-foreground mt-0.5">
-                    {newCount} new job{newCount !== 1 ? "s" : ""} added to your pipeline
-                  </p>
-                ) : (
-                  <p className="text-sm text-muted-foreground mt-0.5">Check pipeline for new URLs</p>
+                <p className="font-semibold text-base">Evaluation complete</p>
+                {summary.company && (
+                  <p className="text-sm text-muted-foreground mt-0.5">{summary.company}</p>
                 )}
+                {summary.score && (
+                  <p className="text-sm mt-1">
+                    Score: <span className="font-bold text-foreground">{summary.score}/5</span>
+                    <span className="text-muted-foreground ml-2">
+                      {parseFloat(summary.score) >= 4.0
+                        ? "— Strong fit, consider applying"
+                        : parseFloat(summary.score) >= 3.5
+                        ? "— Decent fit"
+                        : "— Weak fit"}
+                    </span>
+                  </p>
+                )}
+                <p className="text-xs text-muted-foreground mt-1">Report saved · Tracker updated</p>
               </div>
             </div>
             <div className="mt-4 flex gap-2">
-              <Button asChild>
-                <a href="/dashboard/pipeline">View Pipeline</a>
+              <Button onClick={() => router.push("/dashboard/tracker")}>
+                View in Tracker
               </Button>
-              <Button variant="outline" onClick={handleReset}>Scan Again</Button>
+              <Button variant="outline" onClick={handleReset}>
+                Evaluate another
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -199,9 +232,9 @@ export default function ScannerPage() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-base">
-                {state === "running" && "Scanning portals…"}
+                {state === "running" && "Running evaluation…"}
                 {state === "done" && "Full log"}
-                {state === "error" && "Scan failed"}
+                {state === "error" && "Evaluation failed"}
               </CardTitle>
               {state === "running" && (
                 <div className="flex items-center gap-2">
@@ -221,9 +254,11 @@ export default function ScannerPage() {
                     <span
                       key={stage}
                       className={`text-[10px] px-2 py-0.5 rounded-full font-medium transition-colors ${
-                        isDone ? "bg-green-100 text-green-700" :
-                        isActive ? "bg-blue-100 text-blue-700 animate-pulse" :
-                        "bg-muted text-muted-foreground"
+                        isDone
+                          ? "bg-green-100 text-green-700"
+                          : isActive
+                          ? "bg-blue-100 text-blue-700 animate-pulse"
+                          : "bg-muted text-muted-foreground"
                       }`}
                     >
                       {isDone ? "✓ " : isActive ? "⟳ " : ""}{stage}
@@ -239,7 +274,7 @@ export default function ScannerPage() {
               className="bg-muted rounded-md p-3 h-64 overflow-y-auto font-mono text-xs leading-relaxed whitespace-pre-wrap"
             >
               {lines.length === 0 && state === "running" && (
-                <span className="text-muted-foreground">Starting scan…</span>
+                <span className="text-muted-foreground">Starting claude…</span>
               )}
               {lines.map((l, i) => (
                 <div key={i} className={l.startsWith("⚠") ? "text-yellow-600" : ""}>{l}</div>
